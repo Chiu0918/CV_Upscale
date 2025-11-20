@@ -1,0 +1,13 @@
+# 資料與模型
+data/
+models_ckpt/
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code 設定
+.vscode/
