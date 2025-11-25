@@ -28,7 +28,7 @@ cv_2024_upscale/
 ├─ src/
 │   ├─ data/
 │   │   ├─ degrade.py           # 官方降採樣的 Python 封裝
-│   │   └─ dataset_pairs.py     # PyTorch Dataset（待實作）
+│   │   └─ dataset_pairs.py     # PyTorch Dataset（LR/HR 成對載入）
 │   ├─ models/                  # 模型（SRCNN / U-Net）
 │   │   ├─ srcnn.py
 │   │   └─ unet_sr.py
@@ -84,6 +84,16 @@ python -m scripts.tools.prepare_train_data
 ```
 data/train_lr/
 ```
+
+---
+
+✔ PyTorch Dataset（src/data/dataset_pairs.py）
+
+可載入 (LR, HR) 成對影像
+
+支援 transform
+
+回傳 tensor（C×H×W）
 
 ---
 
@@ -166,7 +176,7 @@ data/train_lr/
 
 ### 🔹 資料處理
 
-* [ ] 實作 `dataset_pairs.py`：讀取 `(LR, HR)` 成為 PyTorch Dataset
+* [x] 實作 `dataset_pairs.py`：讀取 `(LR, HR)` 成為 PyTorch Dataset
 * [ ] 實作資料檢查 notebook（顯示 LR vs HR）
 
 ### 🔹 模型
@@ -193,5 +203,6 @@ data/train_lr/
 # 📌 作者 / 貢獻者
 
 * Chiu0918
+* aceyang108
 * 2024–2025
 
