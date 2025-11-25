@@ -2,6 +2,9 @@
 /data/
 models_ckpt/
 
+# 保留 src/data 底下的 python 檔案
+!src/data/*.py
+
 # Python
 __pycache__/
 *.pyc
