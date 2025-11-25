@@ -1,5 +1,5 @@
 # 資料與模型
-data/
+/data/
 models_ckpt/
 
 # Python
