@@ -104,7 +104,7 @@ data/train_lr/
 請先安裝 Git，然後在任意資料夾執行：
 
 ```bash
-git clone https://github.com/Chiu0918/CV_Upscale.git
+git clone https://github.com/aceyang108/CV_Upscale.git
 cd CV_Upscale
 ```
 
