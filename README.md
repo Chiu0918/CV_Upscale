@@ -158,7 +158,7 @@ pip install opencv-python numpy
 data/train_hr/
 ```
 
-執行：
+執行：(修正成可接受jpg、png、jpeg，並加上data Augmentation)
 
 ```bash
 python -m scripts.tools.prepare_train_data
@@ -172,26 +172,60 @@ data/train_lr/
 
 ---
 
+## 6. 衡量用腳本
+
+check_data_visual.py: 檢查確認產生的lr圖片。
+check_model_result.py: 生成lr|model_result|hr圖片，用視覺展示模型結果，可自由選擇哪個model。
+```bash
+python check_model_result.py
+```
+src/eval.py: 用PSNR和SSIM數值展示單個模型結果，可自由選擇哪個model。
+```bash
+python -m src.eval
+```
+src/compare_to_baseline.py: 比較Bicubic / Nearest 和這次實作的SRCNN、U-Net，用PSNR和SSIM比較。
+```bash
+python -m src.compare_to_baseline
+```
+src/to_csv.py:生成繳交上kaggle的csv
+---
+
+## 7.Model
+實作src/models/scrnn.py，並用src/train_for_srcnn.py訓練，並把結果存在models_ckpt。
+```bash
+python -m src.train_for_srcnn
+```
+實作src/models/unet_sr.py，並用src/train_for_unet.py訓練，並把結果存在models_ckpt。
+```bash
+python -m src.train_for_unet
+```
+---
+
 # 🔜 TODO（接下來的開發計畫）
 
 ### 🔹 資料處理
 
 * [x] 實作 `dataset_pairs.py`：讀取 `(LR, HR)` 成為 PyTorch Dataset
-* [ ] 實作資料檢查 notebook（顯示 LR vs HR）
+* [x] check_data_visual.py: 確認hr vs lr
 
 ### 🔹 模型
 
-* [ ] SRCNN baseline（對照 Bicubic / Nearest）
-* [ ] U-Net SR 模型
+* [x] SRCNN baseline（對照 Bicubic / Nearest）
+* [x] U-Net SR 模型
 
 ### 🔹 訓練
 
-* [ ] 完整 `train.py`：epoch、log、存最佳模型
+* [x] 完整 `train.py`：epoch、log、存最佳模型
 
 ### 🔹 評估
 
-* [ ] PSNR / SSIM 計算
-* [ ] Bicubic / Nearest / SRCNN / U-Net 比較
+* [x] PSNR / SSIM 計算
+* [x] Bicubic / Nearest / SRCNN / U-Net 比較
+
+### Model upgrade
+* [ ] 解決 U-Net 圖片 Over-smoothing 問題。
+* [ ] 引入今天學到課程內的 Residual 與 Attention 來疊更深。
+* [ ] 做成 Patch Training。
 
 ### 🔹 Kaggle
 
