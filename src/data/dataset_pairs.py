@@ -1,28 +1,24 @@
 import os
+import random  # <--- 新增這個 import
 from glob import glob
 from typing import Callable, List, Optional, Tuple
 
 import cv2
 import numpy as np
 import torch
+import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 
 class UpscaleDataset(Dataset):
     """
-    A dataset class for loading pairs of low-resolution and high-resolution images
-    for image super-resolution tasks.
-    Args:
-        root_dir (str): Root directory containing 'lr_dir' and 'hr_dir' subdirectories.
-        transform (Optional[Callable]): Optional transform to be applied on a sample.
-        lr_ext (str): File extension for low-resolution
-        hr_ext (str): File extension for high-resolution
+    讀取成對的 LR 與 HR 影像。
+    包含Data Augmentation。
     """
     
     def __init__(
         self,
         lr_dir: str,
         hr_dir: str,
-        file_ext: str = "*.jpg",
         transform: Optional[Callable] = None,
     ) -> None:
         super().__init__()
@@ -31,20 +27,33 @@ class UpscaleDataset(Dataset):
         self.hr_dir = hr_dir
         self.transform = transform
         
+        # 檢查資料夾是否存在
         if not os.path.exists(lr_dir):
             raise FileNotFoundError(f"Low-resolution directory not found: {lr_dir}")
         if not os.path.exists(hr_dir):
             raise FileNotFoundError(f"High-resolution directory not found: {hr_dir}")
         
-        lr_paths = sorted(glob(os.path.join(lr_dir, file_ext)))
-        hr_paths = sorted(glob(os.path.join(hr_dir, file_ext)))
+        # 同時找 png 和 jpg
+        valid_extensions = ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG")
+        lr_paths = []
+        hr_paths = []
+        
+        for ext in valid_extensions:
+            lr_paths.extend(glob(os.path.join(lr_dir, ext)))
+            hr_paths.extend(glob(os.path.join(hr_dir, ext)))
+            
+        lr_paths = sorted(lr_paths)
+        hr_paths = sorted(hr_paths)
         
         lr_names = {os.path.basename(p) for p in lr_paths}
         hr_names = {os.path.basename(p) for p in hr_paths}
         
         common_names =  sorted(set(lr_names.intersection(hr_names)))
+        
         if not common_names:
-            raise ValueError("No matching image pairs found between LR and HR directories.")
+            print(f"DEBUG: LR files found: {len(lr_paths)}")
+            print(f"DEBUG: HR files found: {len(hr_paths)}")
+            raise ValueError(f"No matching image pairs found between {lr_dir} and {hr_dir}.")
         
         self.pairs: List[Tuple[str, str]] = [
             (os.path.join(lr_dir, name), os.path.join(hr_dir, name)) for name in common_names
@@ -56,51 +65,56 @@ class UpscaleDataset(Dataset):
         return len(self.pairs)
     
     def __load_image(self, path: str) -> np.ndarray:
-        """
-        Load an image from a file path.
-        Args:
-            path (str): Path to the image file.
-            Returns:
-            np.ndarray: Loaded image in BGR format.
-        """
+        """讀取影像 (BGR)"""
         img = cv2.imread(path, cv2.IMREAD_COLOR)
         if img is None:
-            raise FileNotFoundError(f"Image not found: {path}")
+            raise FileNotFoundError(f"Image not found or currupted: {path}")
         return img
         
     def __to_tensor(self, img: np.ndarray) -> torch.Tensor:
         """
-        Convert a numpy image to a PyTorch tensor.
-        Args:
-            img (np.ndarray): Image in HWC format.
-        Returns:
-            torch.Tensor: Image in CHW format as a float tensor.
+        將 Numpy (H, W, C) BGR [0, 255]
+        轉為 Tensor (C, H, W) RGB [0.0, 1.0]
         """
-        img = img.astype(np.float32) / 255.0
-        img = np.transpose(img, (2, 0, 1))  # HWC to CHW
-        return torch.from_numpy(img)
-    
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        return TF.to_tensor(img) 
+
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         lr_path, hr_path = self.pairs[index]
-        
         lr_image = self.__load_image(lr_path)
         hr_image = self.__load_image(hr_path)
         
         if self.transform:
             lr_image, hr_image = self.transform(lr_image, hr_image)
-        
         lr_tensor = self.__to_tensor(lr_image)
         hr_tensor = self.__to_tensor(hr_image)
-        
+
+        # Data Augmentation
+
+        if random.random() > 0.5:
+            lr_tensor = TF.hflip(lr_tensor)
+            hr_tensor = TF.hflip(hr_tensor)
+
+
+        if random.random() > 0.5:
+            lr_tensor = TF.vflip(lr_tensor)
+            hr_tensor = TF.vflip(hr_tensor)
+
+        if random.random() > 0.5:
+            lr_tensor = torch.rot90(lr_tensor, 1, [1, 2])
+            hr_tensor = torch.rot90(hr_tensor, 1, [1, 2])
+
         return lr_tensor, hr_tensor
-    
+
 if __name__ == "__main__":
-    # Example usage
-    dataset = UpscaleDataset(
-        lr_dir="data/train_lr",
-        hr_dir="data/train_hr",
-    )
-    
-    print(f"Dataset size: {len(dataset)}")
-    lr, hr = dataset[0]
-    print(f"LR shape: {lr.shape}, HR shape: {hr.shape}")
+    try:
+        dataset = UpscaleDataset(
+            lr_dir="data/train_lr",
+            hr_dir="data/train_hr",
+        )
+        print(f"Dataset size: {len(dataset)}")
+        if len(dataset) > 0:
+            lr, hr = dataset[0]
+            print(f"LR shape: {lr.shape}, HR shape: {hr.shape}")
+    except Exception as e:
+        print(f"Test failed: {e}")
