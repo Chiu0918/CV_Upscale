@@ -20,12 +20,16 @@ class UpscaleDataset(Dataset):
         lr_dir: str,
         hr_dir: str,
         transform: Optional[Callable] = None,
+        patch_size: Optional[int] = None,
+        scale_factor: int = 4,
     ) -> None:
         super().__init__()
         
         self.lr_dir = lr_dir
         self.hr_dir = hr_dir
         self.transform = transform
+        self.patch_size = patch_size
+        self.scale_factor = scale_factor
         
         # 檢查資料夾是否存在
         if not os.path.exists(lr_dir):
@@ -71,6 +75,46 @@ class UpscaleDataset(Dataset):
             raise FileNotFoundError(f"Image not found or currupted: {path}")
         return img
         
+    def __aligned_random_crop(self, lr_img: np.ndarray, hr_img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        對 (LR, HR) 做對齊的隨機裁切 patch。
+
+        lr_img: (H_lr, W_lr, C)
+        hr_img: (H_hr, W_hr, C)
+        假設 H_hr = H_lr * scale_factor, W_hr = W_lr * scale_factor
+        """
+        if self.patch_size is None:
+            return lr_img, hr_img  # 不啟用 patch training
+
+        ps = self.patch_size
+        sf = self.scale_factor
+
+        h_lr, w_lr, _ = lr_img.shape
+        h_hr, w_hr, _ = hr_img.shape
+
+        # 安全檢查：尺寸是否符合比例
+        if h_hr != h_lr * sf or w_hr != w_lr * sf:
+            # 尺寸不符合時，先不要裁切，以免壞掉
+            return lr_img, hr_img
+
+        if ps > h_lr or ps > w_lr:
+            # patch 太大，無法裁，直接回傳原圖
+            return lr_img, hr_img
+
+        # 在 LR 空間隨機選一個左上角
+        y_lr = random.randint(0, h_lr - ps)
+        x_lr = random.randint(0, w_lr - ps)
+
+        lr_patch = lr_img[y_lr:y_lr+ps, x_lr:x_lr+ps, :]
+
+        # HR 空間對應位置與大小
+        y_hr = y_lr * sf
+        x_hr = x_lr * sf
+        ps_hr = ps * sf
+        hr_patch = hr_img[y_hr:y_hr+ps_hr, x_hr:x_hr+ps_hr, :]
+
+        return lr_patch, hr_patch
+    
     def __to_tensor(self, img: np.ndarray) -> torch.Tensor:
         """
         將 Numpy (H, W, C) BGR [0, 255]
@@ -83,6 +127,8 @@ class UpscaleDataset(Dataset):
         lr_path, hr_path = self.pairs[index]
         lr_image = self.__load_image(lr_path)
         hr_image = self.__load_image(hr_path)
+        
+        lr_image, hr_image = self.__aligned_random_crop(lr_image, hr_image)
         
         if self.transform:
             lr_image, hr_image = self.transform(lr_image, hr_image)
