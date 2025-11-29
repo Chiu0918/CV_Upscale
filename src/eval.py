@@ -5,6 +5,7 @@ import numpy as np
 import cv2  # 用於計算 SSIM
 import math
 import os
+import argparse
 from tqdm import tqdm
 
 from src.data.dataset_pairs import UpscaleDataset
@@ -51,12 +52,12 @@ def calculate_ssim(img1, img2):
                ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
     return ssim_map.mean()
 
-def evaluate():
-
-    MODEL_NAME = "unet"  # "srcnn" or "unet"
+def evaluate(model_name="unet", lr_dir='data/train_lr', hr_dir='data/train_hr', checkpoint=None):
     
-    LR_DIR = 'data/train_lr'
-    HR_DIR = 'data/train_hr'
+    MODEL_NAME = model_name  # "srcnn" or "unet"
+    
+    LR_DIR = lr_dir
+    HR_DIR = hr_dir
     
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     if MODEL_NAME == "srcnn":
@@ -68,7 +69,9 @@ def evaluate():
     else:
         print(f"Unknown: {MODEL_NAME}")
         return
-
+    if checkpoint is not None:
+        MODEL_PATH = checkpoint
+        
     if not os.path.exists(MODEL_PATH):
         print(f"Fail: {MODEL_PATH}")
         return
@@ -112,4 +115,18 @@ def evaluate():
     print("-" * 40)
 
 if __name__ == '__main__':
-    evaluate()
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--model", type=str, default="unet", choices=["srcnn", "unet"])
+    parser.add_argument("--lr-dir", type=str, default="data/train_lr")
+    parser.add_argument("--hr-dir", type=str, default="data/train_hr")
+    parser.add_argument("--checkpoint", type=str, default=None)
+
+    args = parser.parse_args()
+
+    evaluate(
+        model_name=args.model,
+        lr_dir=args.lr_dir,
+        hr_dir=args.hr_dir,
+        checkpoint=args.checkpoint,
+    )
