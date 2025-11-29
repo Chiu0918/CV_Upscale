@@ -108,6 +108,7 @@ def evaluate(model_name="unet", lr_dir='data/train_lr', hr_dir='data/train_hr', 
     avg_psnr = total_psnr / len(dataset)
     avg_ssim = total_ssim / len(dataset)
     
+    
     print("-" * 40)
     print(f"Evaluation Results for {MODEL_NAME.upper()}:")
     print(f"   Average PSNR: {avg_psnr:.4f} dB")
