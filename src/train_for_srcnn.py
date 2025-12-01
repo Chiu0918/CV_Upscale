@@ -1,3 +1,4 @@
+import math
 import os
 import torch
 import torch.nn as nn
@@ -9,6 +10,8 @@ from src.data.dataset_pairs import UpscaleDataset
 from src.models.srcnn import SRCNN
 
 from src.config.train_config import TrainConfig as cfg
+from src.utils import append_log_row
+
 
 def _build_exp_prefix() -> str:
     """
@@ -18,7 +21,7 @@ def _build_exp_prefix() -> str:
     if cfg.exp_name is not None:
         return cfg.exp_name
 
-    # 自動組名：unet_ps32_bs16_lr1e-4 這種格式
+    # 自動組名：srcnn_ps32_bs16_lr1e-4 這種格式
     model = cfg.model_name
     ps = cfg.patch_size if cfg.patch_size is not None else "full"
     bs = cfg.batch_size
@@ -92,6 +95,11 @@ def train():
         print("⚠️ Validation directories not found. Skipping validation.")
         
     prefix = _build_exp_prefix()
+
+    log_dir = os.path.join("logs", prefix)
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "train_log.csv")    
+    log_fieldnames = ["epoch", "train_loss", "val_loss", "learning_rate"]
     
     model = SRCNN().to(DEVICE)
     
@@ -129,8 +137,8 @@ def train():
             # record Loss 
             epoch_loss += loss.item()
             progress_bar.set_postfix({'loss': f"{loss.item():.6f}"})
+            
         avg_train_loss = epoch_loss / len(train_loader)
-        scheduler.step()
         
         if val_loader is not None:
             model.eval()
@@ -154,8 +162,39 @@ def train():
                 f"Val Loss: {avg_val_loss:.6f} | Best Val: {best_val_loss:.6f}"
             )            
             model.train()
+            
+            # 紀錄訓練日誌
+            current_lr = optimizer.param_groups[0]['lr']
+            row = {
+                "epoch": epoch + 1,
+                "train_loss": avg_train_loss,
+                "val_loss": avg_val_loss,
+                "learning_rate": current_lr,
+            }
+
+            append_log_row(
+                log_path,
+                row,
+                fieldnames=log_fieldnames,
+            )
         else:
-            print(f"[Epoch {epoch+1}] Train Loss: {avg_train_loss:.6f}")
+            print(f"[Epoch {epoch+1}] Train Loss: {avg_train_loss:.6f}")            
+            # 紀錄訓練日誌 (沒有 val_loss)
+            current_lr = optimizer.param_groups[0]['lr']
+            row = {
+                "epoch": epoch + 1,
+                "train_loss": avg_train_loss,
+                "val_loss": math.nan,
+                "learning_rate": current_lr,
+            }
+            append_log_row(
+                log_path,
+                row,
+                fieldnames=log_fieldnames,
+            )
+            
+        # 更新學習率
+        scheduler.step()
             
         # Checkpoint
         if (epoch + 1) % cfg.save_every == 0:
