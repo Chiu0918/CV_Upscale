@@ -39,6 +39,8 @@ def train():
     LEARNING_RATE = cfg.learning_rate
     NUM_EPOCHS = cfg.num_epochs          # U-Net 收斂比較慢，給它多一點時間
     
+    cfg.model_name = "unet"
+    
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     print(f"🚀 Training UNetSR on {DEVICE}...")
@@ -53,6 +55,11 @@ def train():
                              hr_dir=HR_DIR,
                              patch_size=PATCH_SIZE,
                              scale_factor=4)
+    
+    if len(dataset) == 0:
+        print("❌ Dataset 是空的")
+        return
+    
     train_loader = DataLoader(dataset,
                               batch_size=BATCH_SIZE,
                               shuffle=True,
@@ -60,10 +67,6 @@ def train():
                               pin_memory=True)
             
     prefix = _build_exp_prefix()
-
-    if len(dataset) == 0:
-        print("❌ Dataset 是空的")
-        return
 
     # --- 建立模型 ---
     model = UNetSR().to(DEVICE)
