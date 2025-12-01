@@ -30,6 +30,10 @@ cv_2024_upscale/
 │  ├─val_hr/                     # 驗證用 HR（由 split_train_val.py 自動產生）
 │  └─val_lr/                     # 驗證用 LR（由 split_train_val.py 自動產生）
 │
+├─logs/
+│  └─ <exp_name>/               # 訓練日誌（train_log.csv）
+│       └─ train_log.csv        # 每 epoch 的 train / val loss 與 learning rate
+│
 ├─models_ckpt/
 │  └─ <exp_name>_best.pth     # 驗證集 Loss 最佳
 │  └─ <exp_name>_epochXX.pth  # 週期性存檔
@@ -297,13 +301,38 @@ python -m src.train_for_unet
 
 ```
 
-支援：
+所有訓練腳本支援：
 
 - Patch Training
-- Train/Val
-- Best Model 儲存 `_best.pth`
-- 週期存檔 `_epochX.pth`
-- 最終 `_final.pth`
+- Train/Val 分割
+- Best Model 自動儲存：`_best.pth`
+- 週期性存檔：`_epochX.pth`
+- 最終模型：`_final.pth`
+- 訓練日誌：`logs/<exp_name>/train_log.csv`
+
+### 📈 訓練紀錄與最佳模型
+
+目前訓練腳本（`train_for_srcnn.py`, `train_for_unet.py`）皆支援：
+
+- 自動儲存最佳模型：`<exp_name>_best.pth`
+- 週期性模型：`_epochX.pth`
+- 最終模型：`_final.pth`
+- 訓練過程自動寫入 `logs/<exp_name>/train_log.csv`
+
+train_log.csv 內容包含：
+
+| epoch | train_loss | val_loss | learning_rate |
+|-------|------------|----------|----------------|
+| 1 | ... | ... | ... |
+| 2 | ... | ... | ... |
+
+你可以在 notebook 讀取並繪製 loss 曲線：
+
+```python
+import pandas as pd
+df = pd.read_csv("logs/<exp_name>/train_log.csv")
+df[["train_loss", "val_loss"]].plot()
+```
 
 ---
 
