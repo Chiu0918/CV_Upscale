@@ -52,10 +52,20 @@ def calculate_ssim(img1, img2):
                ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
     return ssim_map.mean()
 
-def evaluate(model_name="unet", lr_dir='data/train_lr', hr_dir='data/train_hr', checkpoint=None):
+def evaluate(model_name=None, lr_dir='data/train_lr', hr_dir='data/train_hr', checkpoint=None):
     
-    MODEL_NAME = model_name  # "srcnn" or "unet"
-    
+    if model_name is None:
+        if checkpoint is None:
+            raise ValueError("Either model_name or checkpoint must be provided.")
+        if "srcnn" in checkpoint.lower():
+            MODEL_NAME = "srcnn"
+        elif "unet" in checkpoint.lower():
+            MODEL_NAME = "unet"
+        else:
+            raise ValueError("Unable to infer model type from checkpoint name. Please specify model_name manually.")
+    else:
+        MODEL_NAME = model_name    
+        
     LR_DIR = lr_dir
     HR_DIR = hr_dir
     
