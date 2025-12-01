@@ -1,6 +1,7 @@
 # 資料與模型
 /data/
 models_ckpt/
+logs/
 
 # 保留 src/data 底下的 python 檔案
 !src/data/*.py

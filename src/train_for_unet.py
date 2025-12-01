@@ -1,3 +1,4 @@
+import math
 import os
 import torch
 import torch.nn as nn
@@ -10,6 +11,7 @@ from src.data.dataset_pairs import UpscaleDataset
 from src.models.unet_sr import UNetSR
 
 from src.config.train_config import TrainConfig as cfg
+from src.utils import append_log_row
 
 def _build_exp_prefix() -> str:
     """
@@ -94,6 +96,11 @@ def train():
         
     prefix = _build_exp_prefix()
 
+    log_dir = os.path.join("logs", prefix)
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "train_log.csv")    
+    log_fieldnames = ["epoch", "train_loss", "val_loss", "learning_rate"]
+    
     # --- 建立模型 ---
     model = UNetSR().to(DEVICE)
     
@@ -134,11 +141,8 @@ def train():
             current_lr = optimizer.param_groups[0]['lr']
             progress_bar.set_postfix({'loss': f"{loss.item():.6f}", 'lr': f"{current_lr:.6f}"})
             
-        # 更新學習率
-        scheduler.step()
-        
         avg_train_loss = epoch_loss / len(train_loader)
-        
+                
         if val_loader is not None:
             model.eval()
             val_loss = 0.0
@@ -161,8 +165,39 @@ def train():
                 f"Val Loss: {avg_val_loss:.6f} | Best Val: {best_val_loss:.6f}"
             )            
             model.train()
+            
+            # 紀錄訓練日誌
+            current_lr = optimizer.param_groups[0]['lr']
+            row = {
+                "epoch": epoch + 1,
+                "train_loss": avg_train_loss,
+                "val_loss": avg_val_loss,
+                "learning_rate": current_lr,
+            }
+
+            append_log_row(
+                log_path,
+                row,
+                fieldnames=log_fieldnames,
+            )
         else:
             print(f"[Epoch {epoch+1}] Train Loss: {avg_train_loss:.6f}")            
+            # 紀錄訓練日誌 (沒有 val_loss)
+            current_lr = optimizer.param_groups[0]['lr']
+            row = {
+                "epoch": epoch + 1,
+                "train_loss": avg_train_loss,
+                "val_loss": math.nan,
+                "learning_rate": current_lr,
+            }
+            append_log_row(
+                log_path,
+                row,
+                fieldnames=log_fieldnames,
+            )
+            
+        # 更新學習率
+        scheduler.step()
         
         # 每 cfg.save_every 輪存檔一次
         if (epoch + 1) % cfg.save_every == 0:
