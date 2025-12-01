@@ -40,6 +40,9 @@ def train():
     LR_DIR = cfg.lr_dir      
     HR_DIR = cfg.hr_dir      
     
+    VAL_LR_DIR = LR_DIR.replace('train_lr', 'val_lr')
+    VAL_HR_DIR = HR_DIR.replace('train_hr', 'val_hr')
+    
     BATCH_SIZE = cfg.batch_size      
     LEARNING_RATE = cfg.learning_rate     
     NUM_EPOCHS = cfg.num_epochs         
@@ -66,6 +69,28 @@ def train():
                               num_workers=cfg.num_workers,
                               pin_memory=True)
     
+    val_loader = None
+    if os.path.exists(VAL_LR_DIR) and os.path.exists(VAL_HR_DIR):
+        val_dataset = UpscaleDataset(
+            lr_dir=VAL_LR_DIR,
+            hr_dir=VAL_HR_DIR,
+            patch_size=cfg.patch_size,
+            scale_factor=4,
+        )
+        if len(val_dataset) > 0:
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=BATCH_SIZE,
+                shuffle=False,
+                num_workers=cfg.num_workers,
+                pin_memory=True,
+            )
+            print(f"✅ Validation dataset found with {len(val_dataset)} samples.")
+        else:
+            print("⚠️ Validation dataset is empty.")
+    else:
+        print("⚠️ Validation directories not found. Skipping validation.")
+        
     prefix = _build_exp_prefix()
     
     model = SRCNN().to(DEVICE)
@@ -77,6 +102,12 @@ def train():
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5) #adjust learning rate
     os.makedirs(cfg.checkpoint_dir, exist_ok=True)
 
+    best_val_loss = float('inf')
+    best_model_path = os.path.join(
+        cfg.checkpoint_dir,
+        f'{prefix}_best.pth'
+    )
+    
     model.train() 
     for epoch in range(NUM_EPOCHS):
         epoch_loss = 0.0
@@ -98,8 +129,34 @@ def train():
             # record Loss 
             epoch_loss += loss.item()
             progress_bar.set_postfix({'loss': f"{loss.item():.6f}"})
-        avg_loss = epoch_loss / len(train_loader)
+        avg_train_loss = epoch_loss / len(train_loader)
         scheduler.step()
+        
+        if val_loader is not None:
+            model.eval()
+            val_loss = 0.0
+            with torch.no_grad():
+                for lr_imgs, hr_imgs in val_loader:
+                    lr_imgs = lr_imgs.to(DEVICE)
+                    hr_imgs = hr_imgs.to(DEVICE)
+                    outputs = model(lr_imgs)
+                    loss = criterion(outputs, hr_imgs)
+                    val_loss += loss.item()
+            avg_val_loss = val_loss / len(val_loader)
+            
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                torch.save(model.state_dict(), best_model_path)
+                print(f"💾 New best model saved with Val Loss: {best_val_loss:.6f}")
+              
+            print(
+                f"[Epoch {epoch+1}] Train Loss: {avg_train_loss:.6f} | "
+                f"Val Loss: {avg_val_loss:.6f} | Best Val: {best_val_loss:.6f}"
+            )            
+            model.train()
+        else:
+            print(f"[Epoch {epoch+1}] Train Loss: {avg_train_loss:.6f}")
+            
         # Checkpoint
         if (epoch + 1) % cfg.save_every == 0:
             save_path = os.path.join(cfg.checkpoint_dir, f"{prefix}_epoch{epoch+1}.pth")

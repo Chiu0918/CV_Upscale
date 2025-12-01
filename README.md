@@ -27,12 +27,13 @@ cv_2024_upscale/
 │  │  └─upscaled_nearest/
 │  ├─train_hr/                   # 訓練用 HR (256×256)
 │  ├─train_lr/                   # 由 HR 降採樣產生的 LR (64×64)
-│  ├─val_hr/                     # （預留）驗證用 HR
-│  └─val_lr/                     # （預留）驗證用 LR
+│  ├─val_hr/                     # 驗證用 HR（由 split_train_val.py 自動產生）
+│  └─val_lr/                     # 驗證用 LR（由 split_train_val.py 自動產生）
 │
-├─models_ckpt/                   # 訓練好的權重（未納入 Git）
-│  ├─srcnn_*.pth                 # 各種 SRCNN 實驗（含 patch / full）
-│  └─unet_*.pth                  # 各種 U-Net 實驗（含 patch / full）
+├─models_ckpt/
+│  └─ <exp_name>_best.pth     # 驗證集 Loss 最佳
+│  └─ <exp_name>_epochXX.pth  # 週期性存檔
+│  └─ <exp_name>_final.pth    # 最終模型
 │
 ├─notebooks/
 │  ├─0_data_check.ipynb          # 確認資料與對應關係
@@ -48,6 +49,7 @@ cv_2024_upscale/
 │  │  └─upscale_all.py
 │  └─tools/
 │     └─prepare_train_data.py    # 批次產生訓練用 LR 影像（支援 jpg/png/jpeg）
+│     └─split_train_val.py       # 將資料分割為 train / val
 │
 └─src/
    │  compare_to_baseline.py     # 比較 Bicubic / Nearest / SRCNN / U-Net
@@ -129,6 +131,23 @@ data/train_lr/
 
 ---
 
+### ✔ Train/Val Split（`split_train_val.py`）
+
+```bash
+python -m scripts.tools.split_train_val
+
+```
+
+產生：
+
+```
+data/train_hr, train_lr
+data/val_hr, val_lr
+
+```
+
+---
+
 # 📥 安裝與環境設定
 
 ## 1️⃣ 取得專案（Git Clone）
@@ -136,7 +155,7 @@ data/train_lr/
 請先安裝 Git，然後在任意資料夾執行：
 
 ```bash
-git clone https://github.com/aceyang108/CV_Upscale.git
+git clone https://github.com/Chiu0918/CV_Upscale
 cd CV_Upscale
 ```
 
@@ -262,22 +281,29 @@ python -m src.to_csv
 
 ---
 
-## 7️⃣ 模型訓練（SRCNN / U-Net）
+# 7️⃣ 模型訓練
 
-### 🔹 訓練 SRCNN
-
-模型結構：`src/models/srcnn.py`
-訓練腳本：`src/train_for_srcnn.py`
+## 🔹 SRCNN
 
 ```bash
 python -m src.train_for_srcnn
+
 ```
 
-訓練後模型會存入：
+## 🔹 U-Net
 
-```text
-models_ckpt/
+```bash
+python -m src.train_for_unet
+
 ```
+
+支援：
+
+- Patch Training
+- Train/Val
+- Best Model 儲存 `_best.pth`
+- 週期存檔 `_epochX.pth`
+- 最終 `_final.pth`
 
 ---
 
