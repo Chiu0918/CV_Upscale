@@ -269,7 +269,7 @@ python check_model_result.py -m srgan -c models_ckpt/srgan_G.pth
 ### 🔹 與傳統插值法比較（Bicubic / Nearest）
 
 `src/compare_to_baseline.py`
-比較不同模型與 Bicubic / Nearest 的 PSNR 與 SSIM 指標。支援一次輸入多個模型進行比較。
+比較不同模型與 Bicubic / Nearest 的 PSNR 與 SSIM 指標。支援一次輸入多個模型進行比較，有用random。
 
 ```bash
 python -m src.compare_to_baseline \

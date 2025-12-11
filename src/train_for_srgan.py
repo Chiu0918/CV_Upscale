@@ -90,7 +90,7 @@ def train():
             loss_G_GAN = criterion_GAN(output_fake_for_G, real_label)
             loss_G_VGG = criterion_VGG(fake_imgs, hr_imgs)
             loss_G_Content = criterion_content(fake_imgs, hr_imgs)
-            loss_G = loss_G_VGG + (1e-3 * loss_G_GAN) + (10.0 * loss_G_Content)
+            loss_G = loss_G_VGG + (1e-3 * loss_G_GAN) + (10.0 * loss_G_Content)  #調整並記錄
 
             loss_G.backward()
             optimizer_G.step()
