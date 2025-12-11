@@ -1,18 +1,30 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, Subset 
 import numpy as np
 import cv2
 import math
 import os
+import argparse
+import random 
 from tqdm import tqdm
 
+
+from src.data.dataset_pairs import UpscaleDataset
 from src.models.srcnn import SRCNN
 from src.models.unet_sr import UNetSR
-from src.data.dataset_pairs import UpscaleDataset
+try:
+    from src.models.edsr import EDSR
+except ImportError:
+    EDSR = None
+try:
+    from src.models.srgan import Generator as SRGAN_Generator
+except ImportError:
+    SRGAN_Generator = None
 
 def calculate_psnr(img1, img2):
-    """計算 PSNR (img1, img2 必須是 0~255 的 Numpy Array)"""
+    """PSNR"""
     img1 = img1.astype(np.float64)
     img2 = img2.astype(np.float64)
     mse = np.mean((img1 - img2) ** 2)
@@ -21,10 +33,7 @@ def calculate_psnr(img1, img2):
     return 20 * math.log10(255.0 / math.sqrt(mse))
 
 def calculate_ssim(img1, img2):
-    """
-    使用 OpenCV 手動實作 SSIM
-    img1, img2: Numpy Array (H, W, C), 數值範圍 0~255
-    """
+    """ SSIM"""
     I1 = img1.astype(np.float64)
     I2 = img2.astype(np.float64)
 
@@ -55,98 +64,113 @@ def tensor_to_numpy(tensor):
     img = (img * 255.0).clip(0, 255)
     return img
 
-def load_model(model_class, path, device):
-    """載入模型的輔助函數"""
+def load_model(model_name, path, device):
     if not os.path.exists(path):
-        print(f"can't find path")
+        print(f"Warning: Model path not found: {path}")
         return None
-    model = model_class().to(device)
-    model.load_state_dict(torch.load(path, map_location=device, weights_only=True))    
+    
+    model = None
+    if model_name == "srcnn":
+        model = SRCNN().to(device)
+    elif model_name == "unet":
+        model = UNetSR().to(device)
+    elif model_name == "edsr":
+        if EDSR: model = EDSR(n_resblocks=16, n_feats=64, scale=4).to(device)
+    elif model_name == "srgan":
+        if SRGAN_Generator: model = SRGAN_Generator().to(device)
+    
+    if model is None:
+        print(f"Error: Failed to initialize model {model_name}")
+        return None
+
+    try:
+        model.load_state_dict(torch.load(path, map_location=device, weights_only=True))
+    except:
+        model.load_state_dict(torch.load(path, map_location=device))
+        
     model.eval()
     return model
 
 def main():
-    LR_DIR = 'data/train_lr'
-    HR_DIR = 'data/train_hr'
+    parser = argparse.ArgumentParser(description="Compare SR Models")
+    parser.add_argument("--srcnn", type=str, default=None, help="Path to SRCNN checkpoint")
+    parser.add_argument("--unet", type=str, default=None, help="Path to UNet checkpoint")
+    parser.add_argument("--edsr", type=str, default=None, help="Path to EDSR checkpoint")
+    parser.add_argument("--srgan", type=str, default=None, help="Path to SRGAN checkpoint")
     
-    SRCNN_PATH = 'models_ckpt/srcnn_final.pth'
-    UNET_PATH = 'models_ckpt/unet_final.pth'
-    
+    args = parser.parse_args()
+
+    LR_DIR = 'data/val_lr'
+    HR_DIR = 'data/val_hr'
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model_srcnn = load_model(SRCNN, SRCNN_PATH, DEVICE)
-    model_unet = load_model(UNetSR, UNET_PATH, DEVICE)
+    models = {}
+    if args.srcnn: models["SRCNN"] = load_model("srcnn", args.srcnn, DEVICE)
+    if args.unet:  models["UNet"]  = load_model("unet", args.unet, DEVICE)
+    if args.edsr:  models["EDSR"]  = load_model("edsr", args.edsr, DEVICE)
+    if args.srgan: models["SRGAN"] = load_model("srgan", args.srgan, DEVICE)
+
     dataset = UpscaleDataset(lr_dir=LR_DIR, hr_dir=HR_DIR)
     if len(dataset) == 0:
         print("❌ Dataset is empty.")
         return
+    total_images = len(dataset)
+    NUM_SAMPLES = 10 
 
+    if total_images > NUM_SAMPLES:
+        print(f"🎲 Randomly selecting {NUM_SAMPLES} ...")
+        indices = random.sample(range(total_images), NUM_SAMPLES)
+        dataset = Subset(dataset, indices)
+    else:
+        print(f"Dataset has only {total_images} images, using all of them.")
+    
+    n = len(dataset)
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+
     results = {
         "Nearest": {"psnr": 0.0, "ssim": 0.0},
-        "Bicubic": {"psnr": 0.0, "ssim": 0.0},
-        "SRCNN":   {"psnr": 0.0, "ssim": 0.0},
-        "UNet":    {"psnr": 0.0, "ssim": 0.0}
+        "Bicubic": {"psnr": 0.0, "ssim": 0.0}
     }
+    for name in models.keys():
+        results[name] = {"psnr": 0.0, "ssim": 0.0}
 
+    print("Starting comparison...")
     with torch.no_grad():
         for lr_tensor, hr_tensor in tqdm(dataloader):
             hr_img = tensor_to_numpy(hr_tensor) 
             h, w, c = hr_img.shape
             
             lr_img_np = tensor_to_numpy(lr_tensor) 
-            lr_input = lr_tensor.to(DEVICE)        
+            lr_input = lr_tensor.to(DEVICE)
             pred_nearest = cv2.resize(lr_img_np, (w, h), interpolation=cv2.INTER_NEAREST)
             results["Nearest"]["psnr"] += calculate_psnr(pred_nearest, hr_img)
             results["Nearest"]["ssim"] += calculate_ssim(pred_nearest, hr_img)
+            
             pred_bicubic = cv2.resize(lr_img_np, (w, h), interpolation=cv2.INTER_CUBIC)
             results["Bicubic"]["psnr"] += calculate_psnr(pred_bicubic, hr_img)
             results["Bicubic"]["ssim"] += calculate_ssim(pred_bicubic, hr_img)
-            if model_srcnn:
-                out = model_srcnn(lr_input)
-                pred_srcnn = tensor_to_numpy(out)
-                results["SRCNN"]["psnr"] += calculate_psnr(pred_srcnn, hr_img)
-                results["SRCNN"]["ssim"] += calculate_ssim(pred_srcnn, hr_img)
-            if model_unet:
-                out = model_unet(lr_input)
-                pred_unet = tensor_to_numpy(out)
-                results["UNet"]["psnr"] += calculate_psnr(pred_unet, hr_img)
-                results["UNet"]["ssim"] += calculate_ssim(pred_unet, hr_img)
-    n = len(dataset)
-    
+            for name, model in models.items():
+                if model:
+                    out = model(lr_input)
+                    pred = tensor_to_numpy(out)
+                    if pred.shape != hr_img.shape:
+                        pred = cv2.resize(pred, (w, h), interpolation=cv2.INTER_CUBIC)
+                        
+                    results[name]["psnr"] += calculate_psnr(pred, hr_img)
+                    results[name]["ssim"] += calculate_ssim(pred, hr_img)
+
     print("\n" + "="*65)
+    print(f"📊 Results (Averaged over {n} random samples)")
     print(f"{'Method':<15} | {'Average PSNR (dB)':<20} | {'Average SSIM':<15}")
     print("-" * 65)
 
     def print_row(name, data_dict):
         avg_psnr = data_dict["psnr"] / n
         avg_ssim = data_dict["ssim"] / n
-        if avg_psnr == 0 and name not in ["Nearest", "Bicubic"]:
-            print(f"{name:<15} | {'-- Not Loaded --':<20} | {'--':<15}")
-        else:
-            print(f"{name:<15} | {avg_psnr:<20.4f} | {avg_ssim:<15.4f}")
-        return avg_psnr, avg_ssim
-
-    _, _ = print_row("Nearest", results["Nearest"])
-    _, _ = print_row("Bicubic", results["Bicubic"])
-    psnr_srcnn, ssim_srcnn = print_row("SRCNN", results["SRCNN"])
-    psnr_unet, ssim_unet = print_row("UNet", results["UNet"])
-    
+        print(f"{name:<15} | {avg_psnr:<20.4f} | {avg_ssim:<15.4f}")
+    print_row("Nearest", results["Nearest"])
+    print_row("Bicubic", results["Bicubic"])
+    for name in models.keys():
+        print_row(name, results[name])
     print("="*65)
-    
-    if model_unet and model_srcnn:
-        diff_psnr = (results['UNet']['psnr'] - results['SRCNN']['psnr']) / n
-        diff_ssim = (results['UNet']['ssim'] - results['SRCNN']['ssim']) / n
-        
-        print("🔎 Analysis:")
-        if diff_psnr > 0:
-            print(f"PSNR: U-Net 領先 SRCNN {diff_psnr:.4f} dB")
-        else:
-            print(f"PSNR: U-Net 落後 SRCNN {abs(diff_psnr):.4f} dB")
-            
-        if diff_ssim > 0:
-            print(f"SSIM: U-Net 結構還原度優於 SRCNN (+{diff_ssim:.4f})")
-        else:
-            print(f"SSIM: U-Net 結構還原度稍差 ({diff_ssim:.4f})")
-
 if __name__ == "__main__":
     main()
