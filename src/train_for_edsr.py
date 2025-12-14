@@ -17,11 +17,11 @@ def train():
     NUM_EPOCHS = 250  
     LR = 1e-4
     
-    exp_name = "edsr_P192_div2k" #記得改名字
+    exp_name = "edsr_P192_div2k"  #記得改名字
     
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"🚀 Training EDSR on {DEVICE}...")
-    print(f"📦 Config: Patch={PATCH_SIZE}, Batch={BATCH_SIZE}, Epochs={NUM_EPOCHS}")
+    print(f"Training EDSR on {DEVICE}...")
+    print(f"Config: Patch={PATCH_SIZE}, Batch={BATCH_SIZE}, Epochs={NUM_EPOCHS}")
 
     dataset = UpscaleDataset(
         lr_dir=cfg.lr_dir, 
@@ -29,7 +29,6 @@ def train():
         patch_size=PATCH_SIZE, 
         scale_factor=4
     )
-    
     dataloader = DataLoader(
         dataset, 
         batch_size=BATCH_SIZE, 
@@ -37,6 +36,13 @@ def train():
         num_workers=0, 
         pin_memory=True
     )
+    val_dataset = UpscaleDataset(
+        lr_dir="data/val_lr", 
+        hr_dir="data/val_hr", 
+        patch_size=PATCH_SIZE, 
+        scale_factor=4
+    )
+    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, pin_memory=True)
 
     model = EDSR(n_resblocks=16, n_feats=64, scale=4).to(DEVICE)
     criterion = nn.L1Loss()
@@ -48,14 +54,17 @@ def train():
     ckpt_dir = "models_ckpt"
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(ckpt_dir, exist_ok=True)
+    
     log_path = os.path.join(log_dir, "train_log.csv")
-    log_fieldnames = ["epoch", "loss", "learning_rate"]
+    log_fieldnames = ["epoch", "train_loss", "val_loss", "learning_rate"] 
 
-    model.train()
+    best_val_loss = float('inf')
+
+    model.train() 
+    
     for epoch in range(NUM_EPOCHS):
         epoch_loss = 0.0
-        pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS}")
-        
+        pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [Train]")
         for lr, hr in pbar:
             lr, hr = lr.to(DEVICE), hr.to(DEVICE)           
             optimizer.zero_grad()
@@ -70,15 +79,38 @@ def train():
             epoch_loss += loss.item()
             pbar.set_postfix({'loss': f"{loss.item():.6f}"})
         
-        avg_loss = epoch_loss / len(dataloader)
+        avg_train_loss = epoch_loss / len(dataloader) 
         current_lr = optimizer.param_groups[0]['lr']
+
+        #  Validation Loop 
+        model.eval() 
+        val_loss_sum = 0.0
+        with torch.no_grad():
+            for val_lr, val_hr in val_dataloader:
+                val_lr, val_hr = val_lr.to(DEVICE), val_hr.to(DEVICE)
+                val_preds = model(val_lr)
+                v_loss = criterion(val_preds, val_hr)
+                val_loss_sum += v_loss.item()
         
-        print(f"Epoch {epoch+1} Avg Loss: {avg_loss:.6f} | LR: {current_lr:.2e}")
-        append_log_row(log_path, {"epoch": epoch+1, "loss": avg_loss, "learning_rate": current_lr}, log_fieldnames)
+        avg_val_loss = val_loss_sum / len(val_dataloader)
+        model.train() 
+        print(f"Epoch {epoch+1} Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f} | LR: {current_lr:.2e}")
+        
+        append_log_row(log_path, {
+            "epoch": epoch+1, 
+            "train_loss": avg_train_loss, 
+            "val_loss": avg_val_loss,    
+            "learning_rate": current_lr
+        }, log_fieldnames)
         
         scheduler.step()
         if (epoch + 1) % 10 == 0:
             torch.save(model.state_dict(), f"{ckpt_dir}/{exp_name}_epoch{epoch+1}.pth")
+        if avg_val_loss < best_val_loss: 
+            best_val_loss = avg_val_loss
+            torch.save(model.state_dict(), f"{ckpt_dir}/{exp_name}_best.pth")
+            print(f"🏆 Best Model Saved! ({best_val_loss:.6f})")
+
     torch.save(model.state_dict(), f"{ckpt_dir}/{exp_name}_final.pth")
     print(f"EDSR Training Finished! Saved to {ckpt_dir}/{exp_name}_final.pth")
 
