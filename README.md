@@ -216,7 +216,7 @@ pip install opencv-python numpy
 
 ## 5️⃣ 準備資料集
 
-本專案採用DIV2K(https://www.kaggle.com/datasets/soumikrakshit/div2k-high-resolution-images)+Flickr2K(https://www.kaggle.com/datasets/daehoyang/flickr2k?select=Flickr2K)作為主要訓練資料。請將下載後的 HR (高解析度) 圖片放入：
+本專案採用DIV2K( https://www.kaggle.com/datasets/soumikrakshit/div2k-high-resolution-images )+Flickr2K( https://www.kaggle.com/datasets/daehoyang/flickr2k?select=Flickr2K )作為主要訓練資料。請將下載後的 HR (高解析度) 圖片放入：
 
 ```text
 data/train_hr/
